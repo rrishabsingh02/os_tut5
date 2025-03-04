@@ -1,4 +1,4 @@
-#define _XOPEN_SOURCE 600 // Required for barriers
+#define _XOPEN_SOURCE 600 // Required for POSIX compatibility
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -12,11 +12,13 @@ float total_bellcurve = 0;
 int student_grades[NUM_STUDENTS];
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_barrier_t barrier;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+int grades_read = 0;
 
 // Function to read grades from file
 void* read_grades(void* arg) {
-    FILE* file = fopen("grades.txt", "r");
+    FILE* file = fopen("grades-1.txt", "r");
     if (file == NULL) {
         perror("Error opening grades.txt");
         exit(1);
@@ -28,12 +30,23 @@ void* read_grades(void* arg) {
     }
     fclose(file);
 
-    pthread_barrier_wait(&barrier); // Synchronize before proceeding
+    // Signal all threads that grades are available
+    pthread_mutex_lock(&lock);
+    grades_read = 1;
+    pthread_cond_broadcast(&cond);
+    pthread_mutex_unlock(&lock);
+
     pthread_exit(NULL);
 }
 
 // Function to process grades and save bellcurved grades
 void* save_bellcurve(void* arg) {
+    pthread_mutex_lock(&lock);
+    while (!grades_read) {
+        pthread_cond_wait(&cond, &lock);
+    }
+    pthread_mutex_unlock(&lock);
+
     int grade = *(int*)arg;
     float bellcurved_grade = grade * 1.50;
 
@@ -57,12 +70,8 @@ void* save_bellcurve(void* arg) {
 int main(void) {
     pthread_t reader_thread, threads[NUM_STUDENTS];
 
-    // Initialize barrier for 2 sync points (reader + main thread)
-    pthread_barrier_init(&barrier, NULL, 2);
-
     // Create thread to read grades
     pthread_create(&reader_thread, NULL, read_grades, NULL);
-    pthread_barrier_wait(&barrier); // Wait for reading to finish
 
     // Create threads to process grades
     for (int i = 0; i < NUM_STUDENTS; i++) {
@@ -70,18 +79,21 @@ int main(void) {
     }
 
     // Wait for all threads to finish
+    pthread_join(reader_thread, NULL);
     for (int i = 0; i < NUM_STUDENTS; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    // Print total grades and averages
+    // Print total grades and averages (Fixed print statements)
     printf("Total Grade Before Bellcurve: %d\n", total_grade);
     printf("Class Average Before Bellcurve: %.2f\n", (float)total_grade / NUM_STUDENTS);
     printf("Total Grade After Bellcurve: %.2f\n", total_bellcurve);
     printf("Class Average After Bellcurve: %.2f\n", total_bellcurve / NUM_STUDENTS);
 
-    // Destroy the barrier
-    pthread_barrier_destroy(&barrier);
+    // Clean up
+    pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&lock);
+    pthread_cond_destroy(&cond);
 
     return 0;
 }

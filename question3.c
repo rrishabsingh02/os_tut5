@@ -16,7 +16,7 @@ struct Student {
 // Function to apply a bell curve to the grade
 void* bellcurve(void* arg) {
     struct Student* student = (struct Student*)arg;
-    float bellcurved_grade = student->grade * 1.50; // Apply bell curve
+    float bellcurved_grade = student->grade * 1.5;
 
     printf("Student: %s, ID: %d, Original Grade: %d, Bellcurved Grade: %.2f\n",
            student->name, student->student_id, student->grade, bellcurved_grade);
